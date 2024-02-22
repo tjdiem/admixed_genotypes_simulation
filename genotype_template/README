@@ -1,0 +1,8 @@
+run_macs 1
+
+1: population sizes
+
+x mutation rate per base pair per generation
+x bp length of region 50000000
+x recombination rate per base pair per generation   2e-08
+2 generations diverged

@@ -1,0 +1,3 @@
+cd macs_src
+make
+cp macs ../

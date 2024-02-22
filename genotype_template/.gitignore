@@ -1,0 +1,5 @@
+macs_output
+macs_log
+macs
+macs_src/macs
+macs_src/*.o
