@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+# Arguments
+# 1: Admixture proportion
+# 2: Time since admixture
+# 3: Individuals samples (1000 or less)
+
+python3 selam_input_generator.py $1 $2 $3
+
+./SELAM --seed $RANDOM -d SELAM_inputs/demography -o SELAM_inputs/output -c 2 1 0 -s SELAM_inputs/selection
+
+python3 make_panel.py ../genotype_template/panel_template selam_output $3 > panel
+python3 make_sample_file.py $3 > sample

@@ -1,2 +1,10 @@
-needs:
-    macs
+
+
+Start by pulling SELAM submodule:
+git clone --recurse-submodules git@github.com:genicos/admixed_genotypes_simulation.git
+
+Then make a panel template in genotype_template/
+    Read genotype_template/README
+
+Then make a panel and sample file in simulate_admixture/
+    Read simulate_admixture/README

@@ -1,3 +1,9 @@
+#!/usr/bin/env bash
+
+# Arguments
+# 1: size of each diverged populations
+# 2: Time since divergence
+
 ./make_macs
 
 sum=$(echo "$1 * 4 * 0.00000001" | bc)

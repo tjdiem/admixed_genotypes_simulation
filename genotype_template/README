@@ -1,10 +1,15 @@
 
+Run this command
 ./sim_coalesence {population size} {number of generations diverged}
+
+Ex: ./sim_coalesence 10000 500000
 
 This command creates a panel template which is used in the next stage
 to create ahmm panels.
 
-It calls the program ms, a coalesence simulator that generates SNP diversity for two populations. These two populations descend from a single ancestral populations, that split into two populations of size N diploid individuals
+It calls the program macs, a coalesence simulator that generates SNP diversity for two populations. These two populations descend from a single ancestral populations, that split into two populations of size N diploid individuals
+
+Explained here: https://s3-us-west-2.amazonaws.com/oww-files-public/2/21/Msdoc.pdf 
 
                 | |
                 | |      --Ancestral population

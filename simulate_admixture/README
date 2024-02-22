@@ -1,0 +1,8 @@
+Here we generate a panel and sample file, inputs to AHMM
+explained here: https://github.com/russcd/Ancestry_HMM
+
+Start by making selam:
+./make_SELAM
+
+and then run
+./gen_panel {admix proportion} {time since admixture} {number of admixed diploid indvs sampled}

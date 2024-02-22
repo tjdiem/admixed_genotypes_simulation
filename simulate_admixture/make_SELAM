@@ -1,0 +1,3 @@
+cd ../SELAM/src
+make
+cp SELAM ../../simulate_admixture/
