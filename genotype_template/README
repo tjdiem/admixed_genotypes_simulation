@@ -1,8 +1,18 @@
-run_macs 1
 
-1: population sizes
+./sim_coalesence {population size} {number of generations diverged}
 
-x mutation rate per base pair per generation
-x bp length of region 50000000
-x recombination rate per base pair per generation   2e-08
-2 generations diverged
+This command creates a panel template which is used in the next stage
+to create ahmm panels.
+
+It calls the program ms, a coalesence simulator that generates SNP diversity for two populations. These two populations descend from a single ancestral populations, that split into two populations of size N diploid individuals
+
+                | |
+                | |      --Ancestral population
+                | |
+                /  \     --population split T gens ago
+               / /\ \
+              / /  \ \ 
+             / /    \ \  --Two pops A and B, both of size N
+
+
+The first seven columns of the panel template are the same as an ahmm panel. Colums eight and nine are SNPs from 1000 haploids from population A and B.

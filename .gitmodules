@@ -1,0 +1,3 @@
+[submodule "SELAM"]
+	path = SELAM
+	url = git@github.com:russcd/SELAM.git
