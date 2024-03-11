@@ -4,10 +4,37 @@
 # 1: Admixture proportion
 # 2: Time since admixture
 # 3: Individuals samples (1000 or less)
+# 4: Number of files to create
 
-python3 selam_input_generator.py $1 $2 $3
+if [ ! -d "panels" ]; then
+    mkdir panels
+fi
 
-./SELAM --seed $RANDOM -d SELAM_inputs/demography -o SELAM_inputs/output -c 2 1 0 -s SELAM_inputs/selection
+if [ ! -d "outputs" ]; then
+    mkdir outputs
+fi
 
-python3 make_panel.py ../genotype_template/panel_template selam_output $3 > panel
-python3 make_sample_file.py $3 > sample
+if [ ! -d "phases" ]; then
+    mkdir phases
+fi
+
+if [ ! -d "splits" ]; then
+   mkdir splits
+fi
+
+for (( i=0; i<$4; i++ )); do
+
+    cd ../genotype_template
+    ./sim_coalesence 10000 100000
+    cd ../simulate_admixture
+    python3 selam_input_generator.py $1 $2 $3
+
+    ./SELAM --seed $RANDOM$i -d SELAM_inputs/demography -o SELAM_inputs/output -c 2 1 0 -s SELAM_inputs/selection
+
+    python3 make_panel.py ../genotype_template/panel_template selam_output $3 > panels/panel_$i
+    python3 make_sample_file.py $3 > sample
+    mv selam_output outputs/output_$i
+    python3 get_splits.py outputs/output_$i splits/split_$i
+    python3 phase.py splits/split_$i phases/phase_$i
+done
+

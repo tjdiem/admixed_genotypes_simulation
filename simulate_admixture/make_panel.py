@@ -48,7 +48,7 @@ with open(panel_template) as template:
 
     last_morgan = 0
 
-    for line in lines:
+    for line in lines[1:]:
         line = line.split()
 
         morgans = float(line[6])
