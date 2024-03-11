@@ -6,7 +6,6 @@ prop = float(sys.argv[1])
 time = float(sys.argv[2])
 sampled_individuals = int(sys.argv[3])
 
-
 # generate selection file, currently empty, no selection
 selection = open("SELAM_inputs/selection", "w")
 selection.close()
@@ -14,7 +13,7 @@ selection.close()
 
 # generate output file (this determines time and number of samples)
 output = open("SELAM_inputs/output", "w")
-output.write(str(floor(time))+"\t0\t"+str(sampled_individuals//2)+"\t"+str(ceil(sampled_individuals/2))+"\tselam_output\n")
+output.write(str(floor(time))+"\t0\t"+str(sampled_individuals//2)+"\t"+str(ceil(sampled_individuals/2))+"\tselam_output"+"\n")
 output.close()
 
 
