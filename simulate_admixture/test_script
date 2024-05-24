@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+function process_item() {
+
+   sleep 1 
+   seed=$1
+   echo $seed
+
+}
+
+export -f process_item
+
+num_processes=$(ulimit -u)
+echo $num_processes
+
+items=($(seq 0 18))
+
+printf "%s\n" "${items[@]}" | parallel -j $num_processes process_item

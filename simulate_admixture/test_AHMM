@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+
+# 1: panel file
+# 2: split file
+# 3: number of samples
+# 4: admixture time
+# 5: admixtue proportion
+
+set -e
+
+comp=$(bc -l <<< "1 - $5")
+echo $comp
+
+cd ../../data
+
+mkdir -p tempdir/
+cd tempdir/
+rm -f *
+
+python3 ../make_sample_file.py $3
+./../../Ancestry_HMM/src/ancestry_hmm -i ../../admixed_genotypes_simulation/simulate_admixture/$1 -s sample_file -a 2 $5 $comp -p 0 10000 $5 -p 1 $4 $comp
+
+cd ../
+python3 get_accuracy.py ../admixed_genotypes_simulation/simulate_admixture/$2 $3
+
+
+

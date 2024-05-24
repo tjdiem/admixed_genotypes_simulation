@@ -1,40 +1,78 @@
 #!/usr/bin/env bash
-
 # Arguments
 # 1: Admixture proportion
 # 2: Time since admixture
 # 3: Individuals samples (1000 or less)
-# 4: Number of files to create
+# 4: Size of diverged populations
+# 5: Time since divergence
+# 6: Number of files to create 
+# Set arguments in "array" variable below
 
-if [ ! -d "panels" ]; then
-    mkdir panels
-fi
+num_processes=4
 
-if [ ! -d "outputs" ]; then
-    mkdir outputs
-fi
+run_instance(){
 
-if [ ! -d "phases" ]; then
-    mkdir phases
-fi
+    num_processes=4
+    # array=(1 1 2 1 1 2)
+    array=("U(0.2, 0.8)" "U(2, 150)" 400 "N(25000, 2000)" "U(500, 5000)" 600)  # find a way to declare these globally
+    # array=("U(0.2, 0.5)" 1 2 400 1 6)
 
-if [ ! -d "splits" ]; then
-   mkdir splits
-fi
+    set -e
+    set -o errexit
+    set -o pipefail
 
-for (( i=0; i<$4; i++ )); do
+    instance_dir="../parallel_runs/instance_$1"
+    mkdir -p "$instance_dir"
+    cd "$instance_dir"
 
-    cd ../genotype_template
-    ./sim_coalesence 10000 100000
-    cd ../simulate_admixture
-    python3 selam_input_generator.py $1 $2 $3
+    cp -r ../../genotype_template/ .
+    cp -r ../../simulate_admixture/ .
+    cd simulate_admixture/
+    mkdir -p parameters panels outputs splits phases ../genotype_template/panel_templates
 
-    ./SELAM --seed $RANDOM$i -d SELAM_inputs/demography -o SELAM_inputs/output -c 2 1 0 -s SELAM_inputs/selection
+    for ((i = $1; i<${array[5]}; i += $num_processes)); do
 
-    python3 make_panel.py ../genotype_template/panel_template selam_output $3 > panels/panel_$i
-    python3 make_sample_file.py $3 > sample
-    mv selam_output outputs/output_$i
-    python3 get_splits.py outputs/output_$i splits/split_$i
-    python3 phase.py splits/split_$i phases/phase_$i
+        declare -a args=()
+
+        for arg in "${array[@]}"; do
+            result=$(python3 number_generator.py "$arg")
+            args+=("$result")
+        done
+
+        printf '%s\n' "${args[@]}" > parameters/parameter_$i
+
+        cd ../genotype_template
+        ./sim_coalesence_sequential ${args[3]} ${args[4]}
+
+        cd ../simulate_admixture
+        python3 selam_input_generator.py ${args[0]} ${args[1]} ${args[2]}
+
+        ./SELAM --seed $RANDOM$i -d SELAM_inputs/demography -o SELAM_inputs/output -c 2 1 0 -s SELAM_inputs/selection
+
+        python3 make_panel.py ../genotype_template/panel_template selam_output ${args[2]} > panels/panel_$i
+        python3 make_sample_file.py ${args[2]} > sample
+        mv selam_output outputs/output_$i
+        mv ../genotype_template/panel_template ../genotype_template/panel_templates/panel_template_$i
+        python3 get_splits.py outputs/output_$i splits/split_$i
+        python3 phase.py splits/split_$i phases/phase_$i
+
+    done
+}
+
+export -f run_instance
+
+parallel --verbose -j $num_processes run_instance ::: $(seq 0 $(( $num_processes - 1 )))
+
+cd ../data_simulated
+mkdir -p parameters panels outputs splits phases panel_templates
+
+for ((i = 0; i<$num_processes; i++)); do
+    mv ../parallel_runs/instance_$i/simulate_admixture/parameters/* parameters/
+    mv ../parallel_runs/instance_$i/simulate_admixture/panels/* panels/
+    mv ../parallel_runs/instance_$i/simulate_admixture/outputs/* outputs/
+    mv ../parallel_runs/instance_$i/simulate_admixture/splits/* splits/
+    mv ../parallel_runs/instance_$i/simulate_admixture/phases/* phases/
+    mv ../parallel_runs/instance_$i/genotype_template/panel_templates/* panel_templates/
 done
 
+# rm -r ../parallel_runs/

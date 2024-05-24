@@ -3,6 +3,7 @@
 # Arguments
 # 1: size of each diverged populations
 # 2: Time since divergence
+# 3: id
 
 ./make_macs
 
@@ -10,6 +11,6 @@ sum=$(echo "$1 * 4 * 0.00000001" | bc)
 recomb=$(echo "$1 * 4 * 0.00000002" | bc)
 join=$(echo "$2 /(4 * $1)" | bc)
 
-./macs 2000 50000000 -t $sum -r $recomb -I 2 1000 1000 -ej $join 1 2 2> macs_log 1> macs_output
+./macs 2000 50000000 -t $sum -r $recomb -I 2 1000 1000 -ej $join 1 2 2> macs_log_$3 1> macs_output_$3
 
-python3 make_panel_template.py macs_output > panel_template
+python3 make_panel_template.py macs_output_$3 > panel_template_$3

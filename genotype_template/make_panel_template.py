@@ -4,6 +4,7 @@ base_pairs = 50000000
 morgans = 1
 base_calling_error_rate = 0.0001
 min_freq_difference = 0.2
+max_freq_difference = 0.8
 morgan_cutoff = 0.00002
 
 parental_samples = 50
@@ -52,7 +53,7 @@ good = []
 #non informative positions
 for i in range(len(site_pos)):
     good.append(True)
-    if abs(parental_1_count[i]/50 - parental_2_count[i]/50) < min_freq_difference:
+    if max_freq_difference < abs(parental_1_count[i]/50 - parental_2_count[i]/50) or abs(parental_1_count[i]/50 - parental_2_count[i]/50) < min_freq_difference:
         good[i] = False
 
 

@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+
+# Arguments
+# 1: Admixture proportion
+# 2: Time since admixture
+# 3: Individuals samples (1000 or less)
+# 4: Size of diverged populations
+# 5: Time since divergence
+# 6: Number of files to create 
+
+set -e
+set -o errexit
+set -o pipefail
+
+mkdir -p parameters panels outputs splits phases ../genotype_template/panel_templates
+
+for (( i=0; i<$6; i++ )); do
+
+    declare -a args=()
+
+    for arg in "$@"; do
+        result=$(python3 number_generator.py "$arg")
+        args+=("$result")
+    done
+
+    printf '%s\n' "${args[@]}" > parameters/parameter_$i
+
+    cd ../genotype_template
+    ./sim_coalesence_sequential ${args[3]} ${args[4]}
+
+    cd ../simulate_admixture
+    python3 selam_input_generator.py ${args[0]} ${args[1]} ${args[2]}
+
+    ./SELAM --seed $RANDOM$i -d SELAM_inputs/demography -o SELAM_inputs/output -c 2 1 0 -s SELAM_inputs/selection
+
+    python3 make_panel.py ../genotype_template/panel_template selam_output ${args[2]} > panels/panel_$i
+    python3 make_sample_file.py ${args[2]} > sample
+    mv selam_output outputs/output_$i
+    mv ../genotype_template/panel_template ../genotype_template/panel_templates/panel_template_$i
+    python3 get_splits.py outputs/output_$i splits/split_$i
+    python3 phase.py splits/split_$i phases/phase_$i
+done

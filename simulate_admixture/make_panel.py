@@ -1,5 +1,6 @@
 import sys
 
+diploid = True
 
 panel_template = sys.argv[1]
 selam_output = sys.argv[2]
@@ -39,7 +40,7 @@ with open(selam_output) as selam:
 
 
 
-
+inv = 2 if diploid else 1
 
 split_points_index = [0] * len(split_points)
 
@@ -59,24 +60,24 @@ with open(panel_template) as template:
                 split_points_index[i] += 1
         
 
-        sample_index = [0,0]
+        sample_index = [50,50]
         
         #loop through diploids
         for i in range(len(split_points)//2):
             
-
             allele_1_count = 0
 
             chrom_ancestries = [ split_points_index[i*2] % 2 , split_points_index[i*2 + 1] % 2]
 
-
             allele_1_count += int(line[7 + chrom_ancestries[0]][sample_index[chrom_ancestries[0]]])
-            sample_index[chrom_ancestries[0]] += 1
 
-            allele_1_count += int(line[7 + chrom_ancestries[1]][sample_index[chrom_ancestries[1]]])
-            sample_index[chrom_ancestries[1]] += 1
+            if diploid:
+                allele_1_count += int(line[7 + chrom_ancestries[1]][sample_index[chrom_ancestries[1]]])
 
-            line.append(str(2 - allele_1_count))
+            sample_index[0] += 2
+            sample_index[1] += 2
+
+            line.append(str(inv - allele_1_count))
             line.append(str(allele_1_count))
         
         line[6] = str(morgans - last_morgan)
