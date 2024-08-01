@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+iterations=200
+
+for (( i=0; i<$iterations; i++ ))
+do
+
+    file_num=$(( RANDOM % 600 ))
+
+    individual=$(( RANDOM % 400 ))
+
+    python3 predict_full_seq5.py $file_num n_ind_adm_start=$individual n_ind_adm_end=$individual+1
+
+done

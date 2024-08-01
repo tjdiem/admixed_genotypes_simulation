@@ -3,6 +3,7 @@ from processing import *
 from training_functions import *
 from kmodels2 import KNet4
 import sys
+from copy import deepcopy
 
 if mixed_precision:
     from torch.cuda.amp import autocast, GradScaler
@@ -125,7 +126,7 @@ def get_batch(split, num_samples):
 def estimate_loss(num_samples):
     model.eval()
     for split in ["train", "test"]:
-        for num_probs in [0, 2, 4]:  #hardcoded for now
+        for num_probs in [2]: # 0, 2,4 #hardcoded for now
             X, y, refs, params = get_batch(split, num_samples)
             y_pred = torch.zeros((num_samples, num_classes))
             y_true = torch.zeros((num_samples, num_classes)).to(device)
@@ -209,6 +210,10 @@ if checkpointing:
 
 GetMemory()
 
+reference_model = deepcopy(model)
+
+estimate_loss(num_estimate)
+
 #Training loop
 best_loss = 1
 model.train()
@@ -235,7 +240,7 @@ for epoch in range(num_epochs):
 
         X_batch, y_batch, refs_batch, labels_batch = preprocess_batch(X_batch, y_batch, refs_batch)
 
-        labels_batch, y_batch = get_y_batch(X_batch, y_batch, refs_batch, labels_batch, model)
+        labels_batch, y_batch = get_y_batch(X_batch, y_batch, refs_batch, labels_batch, reference_model)
 
         optimizer.zero_grad()
 

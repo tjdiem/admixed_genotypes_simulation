@@ -1,5 +1,7 @@
 from globals import *
 from math import e, sqrt, log
+from scipy.optimize import linear_sum_assignment
+import numpy as np
 import TNet
 
 OHE_values = torch.arange(3**4).reshape(3, 3, 3, 3) # SOI value, ref value, class we are in, labeled class of ref
@@ -23,7 +25,7 @@ Transition[torch.arange(num_classes**4).long(), OHE_values] = 1 #dype = long
     # then values should be same
 # else they should be different
 
-class KNet4(nn.Module):
+class KNet_positional(nn.Module):
     def __init__(self):
         super().__init__()
 
@@ -36,7 +38,7 @@ class KNet4(nn.Module):
 
         self.linear0 = nn.Linear(n_embd_model, hidden0)
 
-        self.linear1 = nn.Linear(input_size * hidden0, hidden1)
+        self.linear1 = nn.Linear(input_size_positional * hidden0, hidden1)
         self.linear2 = nn.Linear(hidden1, hidden2) 
         self.linear3 = nn.Linear(hidden2, 1)
 
@@ -51,8 +53,8 @@ class KNet4(nn.Module):
 
         num_individuals, len_seq = SOI.shape
 
-        padding = torch.full((num_individuals, input_size // 2), -1).to(device)
-        SOI = torch.cat((padding, SOI, padding), dim=1) # (num_individuals, len_seq + input_size - 1)
+        padding = torch.full((num_individuals, input_size_positional // 2), -1).to(device)
+        SOI = torch.cat((padding, SOI, padding), dim=1) # (num_individuals, len_seq + input_size_positional - 1)
         
         # fill with 0.25, 0.5, 0.25 # fill with ancestry proporotion
         predictions = torch.full((num_individuals, len_seq, num_classes), 1/num_classes).to(device) # (num_individuals, len_seq, num_classes)
@@ -65,12 +67,12 @@ class KNet4(nn.Module):
         predictions[0, :, :2] = torch.exp(torch.arange(len_seq) * (-num_generations/100)).unsqueeze(-1).repeat(1,2) * (1/6) + (1/3)
         predictions[0, :, 2] = 1 - predictions[0, :, 0] - predictions[0, :, 1]
 
-        padding = torch.full((num_individuals, input_size // 2, num_classes), 0).to(device)
-        predictions = torch.cat((padding, predictions, padding), dim=1) # (num_individuals, len_seq + input_size - 1, num_classes)
+        padding = torch.full((num_individuals, input_size_positional // 2, num_classes), 0).to(device)
+        predictions = torch.cat((padding, predictions, padding), dim=1) # (num_individuals, len_seq + input_size_positional - 1, num_classes)
 
         mask = (1 - torch.eye(num_individuals)).bool() # is there some way we can make labels a pointer to predictions
-        refs = SOI.unsqueeze(0).expand(num_individuals,-1,-1)[mask].reshape(num_individuals, num_individuals -1 , len_seq + input_size - 1)
-        labels = predictions.unsqueeze(0).expand(num_individuals,-1,-1,-1)[mask].reshape(num_individuals, num_individuals - 1, len_seq + input_size - 1, num_classes)
+        refs = SOI.unsqueeze(0).expand(num_individuals,-1,-1)[mask].reshape(num_individuals, num_individuals -1 , len_seq + input_size_positional - 1)
+        labels = predictions.unsqueeze(0).expand(num_individuals,-1,-1,-1)[mask].reshape(num_individuals, num_individuals - 1, len_seq + input_size_positional - 1, num_classes)
 
         print("shapes")
         print(SOI.shape)
@@ -87,15 +89,15 @@ class KNet4(nn.Module):
         # while True:
         #     for istart in range(1, num_individuals, max_batch_size):
         #         iend = min(istart + max_batch_size, num_individuals - 1)
-        #         out = self(SOI[istart:iend, :input_size], refs[istart:iend, :, :input_size], labels[istart:iend, :, :input_size])
-        #         predictions[istart:iend, input_size // 2] = F.softmax(out, dim=-1)
+        #         out = self(SOI[istart:iend, :input_size_positional], refs[istart:iend, :, :input_size_positional], labels[istart:iend, :, :input_size_positional])
+        #         predictions[istart:iend, input_size_positional // 2] = F.softmax(out, dim=-1)
         #         # right now the forward method chooses 48 random ref panels
 
             
             
         #     # unnecessary if we can make labels a pointer to predictions
         #     # indent/unindent this
-        #     labels = predictions.unsqueeze(0).expand(num_individuals,-1,-1,-1)[mask].reshape(num_individuals, num_individuals - 1, len_seq + input_size - 1, num_classes)
+        #     labels = predictions.unsqueeze(0).expand(num_individuals,-1,-1,-1)[mask].reshape(num_individuals, num_individuals - 1, len_seq + input_size_positional - 1, num_classes)
         ####
 
         """
@@ -131,15 +133,15 @@ class KNet4(nn.Module):
             when_predicted[ind1, ind2] = 0
 
             ind1 = ind1.unsqueeze(-1)
-            ind2 = ind2.unsqueeze(-1) + torch.arange(input_size).long()
+            ind2 = ind2.unsqueeze(-1) + torch.arange(input_size_positional).long()
             out = self(SOI[ind1, ind2], refs[ind1, :, ind2].transpose(1,2), labels[ind1, :, ind2].transpose(1,2))
             out = F.softmax(out, dim=-1)
             # torch.stack indices instead?  
 
-            s += (predictions[ind1[:,0], ind2[:,0] + input_size // 2] - out).abs().sum().item()
-            predictions[ind1[:,0], ind2[:,0] + input_size // 2] = out
+            s += (predictions[ind1[:,0], ind2[:,0] + input_size_positional // 2] - out).abs().sum().item()
+            predictions[ind1[:,0], ind2[:,0] + input_size_positional // 2] = out
 
-            labels = predictions.unsqueeze(0).expand(num_individuals,-1,-1,-1)[mask].reshape(num_individuals, num_individuals - 1, len_seq + input_size - 1, num_classes)
+            labels = predictions.unsqueeze(0).expand(num_individuals,-1,-1,-1)[mask].reshape(num_individuals, num_individuals - 1, len_seq + input_size_positional - 1, num_classes)
 
             # if i % 100 == 0:
             #     print(i/ (num_individuals * len_seq * 6))
@@ -148,7 +150,7 @@ class KNet4(nn.Module):
             #     s = 0
 
 
-        return predictions[:, input_size // 2: -(input_size // 2)]
+        return predictions[:, input_size_positional // 2: -(input_size_positional // 2)]
     
     @torch.no_grad()
     def predict_cluster2(self, SOI, positions, batch_size=batch_size, num_generations=None):
@@ -161,8 +163,8 @@ class KNet4(nn.Module):
 
         num_individuals, len_seq = SOI.shape
 
-        padding = torch.full((num_individuals, input_size // 2), -1).to(device)
-        SOI = torch.cat((padding, SOI, padding), dim=1) # (num_individuals, len_seq + input_size - 1)
+        padding = torch.full((num_individuals, input_size_positional // 2), -1).to(device)
+        SOI = torch.cat((padding, SOI, padding), dim=1) # (num_individuals, len_seq + input_size_positional - 1)
         
         # fill with 0.25, 0.5, 0.25 # fill with ancestry proporotion
         predictions = torch.full((num_individuals, len_seq, num_classes), 1/num_classes).to(device) # (num_individuals, len_seq, num_classes)
@@ -174,15 +176,15 @@ class KNet4(nn.Module):
         predictions[0, :, 1] = 0.5
         predictions[0, :, 2] = 1 - predictions[0, :, 0] - predictions[0, :, 1]
 
-        padding = torch.full((num_individuals, input_size // 2, num_classes), 0).to(device)
-        predictions = torch.cat((padding, predictions, padding), dim=1) # (num_individuals, len_seq + input_size - 1, num_classes)
+        padding = torch.full((num_individuals, input_size_positional // 2, num_classes), 0).to(device)
+        predictions = torch.cat((padding, predictions, padding), dim=1) # (num_individuals, len_seq + input_size_positional - 1, num_classes)
 
-        padding = torch.full((input_size // 2,), float("inf")).to(device)
+        padding = torch.full((input_size_positional // 2,), float("inf")).to(device)
         positions = torch.cat((padding, positions / num_bp, padding), dim=0)
 
         mask = (1 - torch.eye(num_individuals)).bool() # is there some way we can make labels a pointer to predictions
-        refs = SOI.unsqueeze(0).expand(num_individuals,-1,-1)[mask].reshape(num_individuals, num_individuals -1 , len_seq + input_size - 1)
-        labels = predictions.unsqueeze(0).expand(num_individuals,-1,-1,-1)[mask].reshape(num_individuals, num_individuals - 1, len_seq + input_size - 1, num_classes)
+        refs = SOI.unsqueeze(0).expand(num_individuals,-1,-1)[mask].reshape(num_individuals, num_individuals -1 , len_seq + input_size_positional - 1)
+        labels = predictions.unsqueeze(0).expand(num_individuals,-1,-1,-1)[mask].reshape(num_individuals, num_individuals - 1, len_seq + input_size_positional - 1, num_classes)
 
         print("shapes")
         print(SOI.shape)
@@ -215,7 +217,7 @@ class KNet4(nn.Module):
             has_predicted[ind1, ind2] = 1
 
             ind1 = ind1.unsqueeze(-1)
-            ind2 = ind2.unsqueeze(-1) + torch.arange(input_size).long()
+            ind2 = ind2.unsqueeze(-1) + torch.arange(input_size_positional).long()
             SOI_batch = SOI[ind1, ind2]
             refs_batch = refs[ind1, :, ind2].transpose(1,2)
             labels_batch = labels[ind1, :, ind2].transpose(1,2)
@@ -228,25 +230,25 @@ class KNet4(nn.Module):
 
             # conider multiplying exp distribution by alpha?
             len_exp_distribution = 49 ## this should be chosen based on num generations and threshold accuracy
-            positions_batch = (positions_batch[:, input_size // 2 - len_exp_distribution // 2: input_size // 2 + len_exp_distribution // 2 + 1] - positions_batch[:, input_size // 2].unsqueeze(-1)).abs()
+            positions_batch = (positions_batch[:, input_size_positional // 2 - len_exp_distribution // 2: input_size_positional // 2 + len_exp_distribution // 2 + 1] - positions_batch[:, input_size_positional // 2].unsqueeze(-1)).abs()
             # The below line is not exactly right.  Each predicted class could transition to another class with different probabilities
             exp_distribution = torch.exp(-2 * num_generations * (positions_batch)) # batch, len_exp_distribution
 
             out_smoothed = out.unsqueeze(1) * exp_distribution.unsqueeze(-1) # batch, len_exp_distribution, num_classes
-            predictions_idx = torch.stack([predictions[ind1[j,0], ind2[j,0] + input_size // 2 - len_exp_distribution // 2: ind2[j,0] + input_size // 2 + len_exp_distribution // 2 + 1] for j in range(batch_size)])
+            predictions_idx = torch.stack([predictions[ind1[j,0], ind2[j,0] + input_size_positional // 2 - len_exp_distribution // 2: ind2[j,0] + input_size_positional // 2 + len_exp_distribution // 2 + 1] for j in range(batch_size)])
             predictions_smoothed = predictions_idx * (1 - exp_distribution.unsqueeze(-1))
 
             for j in range(batch_size):
-                predictions[ind1[j,0], ind2[j,0] + input_size // 2 - len_exp_distribution // 2: ind2[j,0] + input_size // 2 + len_exp_distribution // 2 + 1] = out_smoothed[j] + predictions_smoothed[j]
+                predictions[ind1[j,0], ind2[j,0] + input_size_positional // 2 - len_exp_distribution // 2: ind2[j,0] + input_size_positional // 2 + len_exp_distribution // 2 + 1] = out_smoothed[j] + predictions_smoothed[j]
 
-            labels = predictions.unsqueeze(0).expand(num_individuals,-1,-1,-1)[mask].reshape(num_individuals, num_individuals - 1, len_seq + input_size - 1, num_classes)
+            labels = predictions.unsqueeze(0).expand(num_individuals,-1,-1,-1)[mask].reshape(num_individuals, num_individuals - 1, len_seq + input_size_positional - 1, num_classes)
 
             #####
             strict_predictions[ind3, ind4] = out
 
             if infer_num_generations and i % (batch_size * 100) == 0 and i > 0:
 
-                num_tracts = (predictions[:, input_size // 2: -(input_size // 2) - 1].argmax(dim=-1) != predictions[:, input_size // 2 + 1: -(input_size // 2)].argmax(dim=-1)).sum().item() + num_individuals
+                num_tracts = (predictions[:, input_size_positional // 2: -(input_size_positional // 2) - 1].argmax(dim=-1) != predictions[:, input_size_positional // 2 + 1: -(input_size_positional // 2)].argmax(dim=-1)).sum().item() + num_individuals
                 print(num_tracts)
                 avg_len_transition = num_individuals * (5.8413e-02 - 5.1200e-06) / num_tracts
                 print(avg_len_transition)
@@ -258,8 +260,8 @@ class KNet4(nn.Module):
                 # total_length = 0
                 # total_n = 0
                 # for j in range(num_individuals):
-                #     positions_valid = positions[input_size // 2 : - (input_size // 2)][has_predicted[j].bool()]
-                #     predictions_valid = strict_predictions[j, input_size // 2 : - (input_size // 2)][has_predicted[j].bool()].argmax(dim=-1)
+                #     positions_valid = positions[input_size_positional // 2 : - (input_size_positional // 2)][has_predicted[j].bool()]
+                #     predictions_valid = strict_predictions[j, input_size_positional // 2 : - (input_size_positional // 2)][has_predicted[j].bool()].argmax(dim=-1)
                 #     # print(positions_valid)
                 #     # print(predictions_valid)
                 #     transitions = predictions_valid[:-1] != predictions_valid[1:]
@@ -286,18 +288,18 @@ class KNet4(nn.Module):
                 print("infer num generations")
                 # max dist should be based on num generations (current prediction) and threshold
                 max_dist_valid = 1e-3
-                all_predictions = predictions[:, input_size // 2 : - (input_size // 2)][has_predicted.bool()]
+                all_predictions = predictions[:, input_size_positional // 2 : - (input_size_positional // 2)][has_predicted.bool()]
                 probs_cov = torch.cov(all_predictions.t())
                 print(probs_cov)
                 for j in range(num_individuals):
-                    positions_predicted = positions[input_size // 2 : - (input_size // 2)][has_predicted[j].bool()]
+                    positions_predicted = positions[input_size_positional // 2 : - (input_size_positional // 2)][has_predicted[j].bool()]
                     distances = positions_predicted.unsqueeze(0) - positions_predicted.unsqueeze(1)
                     valid_pairs = (distances > 0) & (distances < max_dist_valid)
                     valid_pairs = valid_pairs.nonzero(as_tuple = True)
 
-                    # valid_predictions = predictions[j, input_size // 2 : - (input_size // 2)][has_predicted[j].bool()]
+                    # valid_predictions = predictions[j, input_size_positional // 2 : - (input_size_positional // 2)][has_predicted[j].bool()]
                     #####
-                    valid_predictions = strict_predictions[j, input_size // 2 : - (input_size // 2)][has_predicted[j].bool()]
+                    valid_predictions = strict_predictions[j, input_size_positional // 2 : - (input_size_positional // 2)][has_predicted[j].bool()]
                     #we have to account for correlated probabilities
                     # we have to update this iteratively. weighted average between new estimate and old estimate where new estimate only includes newer predictions
                     probs_same = valid_predictions[valid_pairs[0]] * valid_predictions[valid_pairs[1]]
@@ -325,12 +327,12 @@ class KNet4(nn.Module):
                     exit()
 
                     
-                # positions_predicted = positions.unsqueeze(0).expand(num_individuals, -1)[:, input_size // 2: -(input_size // 2)][has_predicted.bool()]
+                # positions_predicted = positions.unsqueeze(0).expand(num_individuals, -1)[:, input_size_positional // 2: -(input_size_positional // 2)][has_predicted.bool()]
 
                 # print(positions_predicted.shape)
                 
 
-        return predictions[:, input_size // 2: -(input_size // 2)]
+        return predictions[:, input_size_positional // 2: -(input_size_positional // 2)]
 
     @torch.no_grad()
     def predict_cluster3(self, SOI, positions_bp, recombination_map, len_chrom_bp=None, batch_size=batch_size, num_generations=None, admixture_proportion=None, population_size=None):
@@ -362,8 +364,8 @@ class KNet4(nn.Module):
 
         num_individuals, len_seq = SOI.shape
 
-        padding = torch.full((num_individuals, input_size // 2), -1).to(device)
-        SOI = torch.cat((padding, SOI, padding), dim=1) # (num_individuals, len_seq + input_size - 1)
+        padding = torch.full((num_individuals, input_size_positional // 2), -1).to(device)
+        SOI = torch.cat((padding, SOI, padding), dim=1) # (num_individuals, len_seq + input_size_positional - 1)
         
         # fill with 0.25, 0.5, 0.25 # fill with ancestry proporotion
         predictions = torch.zeros((num_individuals, len_seq, num_classes)).to(device) # (num_individuals, len_seq, num_classes)
@@ -400,15 +402,15 @@ class KNet4(nn.Module):
         # predictions[0, :, 0] = 0.5 * (1 - admixture_proportion) * transition_aa_haploid + 0.5 * admixture_proportion * transition_cc_haploid
         # predictions[0, :, 2] = 0.5 - predictions[0, :, 0]
 
-        padding = torch.full((num_individuals, input_size // 2, num_classes), 0).to(device)
-        predictions = torch.cat((padding, predictions, padding), dim=1) # (num_individuals, len_seq + input_size - 1, num_classes)
+        padding = torch.full((num_individuals, input_size_positional // 2, num_classes), 0).to(device)
+        predictions = torch.cat((padding, predictions, padding), dim=1) # (num_individuals, len_seq + input_size_positional - 1, num_classes)
 
-        padding = torch.full((input_size // 2,), float("inf")).to(device)
+        padding = torch.full((input_size_positional // 2,), float("inf")).to(device)
         positions = torch.cat((padding, positions_morgans, padding), dim=0)
 
         mask = (1 - torch.eye(num_individuals)).bool() # is there some way we can make labels a pointer to predictions
-        refs = SOI.unsqueeze(0).expand(num_individuals,-1,-1)[mask].reshape(num_individuals, num_individuals -1 , len_seq + input_size - 1)
-        labels = predictions.unsqueeze(0).expand(num_individuals,-1,-1,-1)[mask].reshape(num_individuals, num_individuals - 1, len_seq + input_size - 1, num_classes)
+        refs = SOI.unsqueeze(0).expand(num_individuals,-1,-1)[mask].reshape(num_individuals, num_individuals -1 , len_seq + input_size_positional - 1)
+        labels = predictions.unsqueeze(0).expand(num_individuals,-1,-1,-1)[mask].reshape(num_individuals, num_individuals - 1, len_seq + input_size_positional - 1, num_classes)
 
         print("shapes")
         print(SOI.shape)
@@ -416,7 +418,7 @@ class KNet4(nn.Module):
         print(predictions.shape)
         print(labels.shape)
 
-        refs2 = torch.zeros(num_individuals, num_individuals - 1, len_seq + input_size - 1).to(device)
+        refs2 = torch.zeros(num_individuals, num_individuals - 1, len_seq + input_size_positional - 1).to(device)
         for i in range(num_individuals):
             refs2[i] = torch.cat((SOI[:i], SOI[i+1:]), dim=0)
         print(torch.equal(refs, refs2))
@@ -437,7 +439,7 @@ class KNet4(nn.Module):
             if i == 0:
                 probabilities[0] = 0
 
-            probabilities = 1 - predictions[:, input_size // 2 : - (input_size // 2)].max(dim=-1)[0].cpu()
+            probabilities = 1 - predictions[:, input_size_positional // 2 : - (input_size_positional // 2)].max(dim=-1)[0].cpu()
             ind1 = torch.multinomial(probabilities.sum(dim=-1), batch_size, replacement=False)
             ind2 = torch.multinomial(probabilities[ind1], 1).squeeze(-1)
             
@@ -449,7 +451,7 @@ class KNet4(nn.Module):
             has_predicted[ind1, ind2] = 1
 
             ind1 = ind1.unsqueeze(-1)
-            ind2 = ind2.unsqueeze(-1) + torch.arange(input_size).long()
+            ind2 = ind2.unsqueeze(-1) + torch.arange(input_size_positional).long()
             SOI_batch = SOI[ind1, ind2]
             refs_batch = refs[ind1, :, ind2].transpose(1,2)
             labels_batch = labels[ind1, :, ind2].transpose(1,2)
@@ -461,14 +463,14 @@ class KNet4(nn.Module):
             out = F.softmax(out, dim=-1).double() # batch, num_classes
 
             ###########9999
-            positions_diff = (positions - positions_batch[:, input_size // 2].unsqueeze(-1)).abs().to(device) # batch, len_seq + input_size
+            positions_diff = (positions - positions_batch[:, input_size_positional // 2].unsqueeze(-1)).abs().to(device) # batch, len_seq + input_size_positional
 
-            transition_aa_haploid = lam_c / lam + (lam_a/lam) * torch.exp(-lam * positions_diff) # batch, len_seq + input_size - 1
+            transition_aa_haploid = lam_c / lam + (lam_a/lam) * torch.exp(-lam * positions_diff) # batch, len_seq + input_size_positional - 1
             transition_cc_haploid = lam_a / lam + (lam_c/lam) * torch.exp(-lam * positions_diff)
             transition_ac_haploid = 1 - transition_aa_haploid
             transition_ca_haploid = 1 - transition_cc_haploid
             
-            transitions = torch.zeros((batch_size, len_seq + input_size - 1, num_classes, num_classes)).double().to(device)
+            transitions = torch.zeros((batch_size, len_seq + input_size_positional - 1, num_classes, num_classes)).double().to(device)
             transitions[:, :, 0, 0] = transition_aa_haploid ** 2
             transitions[:, :, 0, 1] = transition_aa_haploid * transition_ac_haploid * 2
             transitions[:, :, 0, 2] = transition_ac_haploid ** 2
@@ -481,57 +483,64 @@ class KNet4(nn.Module):
 
             out_smoothed = (out.unsqueeze(1).unsqueeze(1) @ transitions).squeeze(-2).float() #@ transition_ancestry_probs
             out = out.float()
-            tmp = torch.exp(-2 * num_generations * positions_diff * 10).unsqueeze(-1) #hardcoded for now #increase factor as time goes on
+            tmp = torch.exp(-2 * num_generations * positions_diff * 10).unsqueeze(-1) #hardcoded for now
             
             predictions[ind3] = predictions[ind3] * (1 - tmp) + out_smoothed * tmp
-            predictions[:, :input_size // 2] = 0
-            predictions[:, -(input_size // 2):] = 0
+            predictions[:, :input_size_positional // 2] = 0
+            predictions[:, -(input_size_positional // 2):] = 0
 
-            assert ((1 - predictions[:, input_size // 2: - (input_size // 2)].sum(dim=-1)).abs() < 1e-4).all()
+            assert ((1 - predictions[:, input_size_positional // 2: - (input_size_positional // 2)].sum(dim=-1)).abs() < 1e-4).all()
             ###########9999
 
             ###########9999
             # conider multiplying exp distribution by alpha?
             # out = out.float()
             # len_exp_distribution = 49 ## this should be chosen based on num generations and threshold accuracy
-            # positions_batch = (positions_batch[:, input_size // 2 - len_exp_distribution // 2: input_size // 2 + len_exp_distribution // 2 + 1] - positions_batch[:, input_size // 2].unsqueeze(-1)).abs()
+            # positions_batch = (positions_batch[:, input_size_positional // 2 - len_exp_distribution // 2: input_size_positional // 2 + len_exp_distribution // 2 + 1] - positions_batch[:, input_size_positional // 2].unsqueeze(-1)).abs()
             # # The below line is not exactly right.  Each predicted class could transition to another class with different probabilities
             # exp_distribution = torch.exp(-2 * num_generations * (positions_batch)) # batch, len_exp_distribution
 
             # out_smoothed = out.unsqueeze(1) * exp_distribution.unsqueeze(-1) # batch, len_exp_distribution, num_classes
-            # predictions_idx = torch.stack([predictions[ind1[j,0], ind2[j,0] + input_size // 2 - len_exp_distribution // 2: ind2[j,0] + input_size // 2 + len_exp_distribution // 2 + 1] for j in range(batch_size)])
+            # predictions_idx = torch.stack([predictions[ind1[j,0], ind2[j,0] + input_size_positional // 2 - len_exp_distribution // 2: ind2[j,0] + input_size_positional // 2 + len_exp_distribution // 2 + 1] for j in range(batch_size)])
             # predictions_smoothed = predictions_idx * (1 - exp_distribution.unsqueeze(-1))
 
             # for j in range(batch_size):
-            #     predictions[ind1[j,0], ind2[j,0] + input_size // 2 - len_exp_distribution // 2: ind2[j,0] + input_size // 2 + len_exp_distribution // 2 + 1] = out_smoothed[j] + predictions_smoothed[j]
+            #     predictions[ind1[j,0], ind2[j,0] + input_size_positional // 2 - len_exp_distribution // 2: ind2[j,0] + input_size_positional // 2 + len_exp_distribution // 2 + 1] = out_smoothed[j] + predictions_smoothed[j]
             ###########9999
 
-            labels = predictions.unsqueeze(0).expand(num_individuals,-1,-1,-1)[mask].reshape(num_individuals, num_individuals - 1, len_seq + input_size - 1, num_classes)
+            labels = predictions.unsqueeze(0).expand(num_individuals,-1,-1,-1)[mask].reshape(num_individuals, num_individuals - 1, len_seq + input_size_positional - 1, num_classes)
 
             #####
             strict_predictions[ind3, ind4] = out
 
             if infer_num_generations and i % (batch_size * 500) == 0 and i > 0:
 
-                predictions_argmax = predictions[:, input_size // 2: -(input_size // 2)].argmax(dim=-1)
+                predictions_argmax = predictions[:, input_size_positional // 2: -(input_size_positional // 2)].argmax(dim=-1)
 
-                positions_diff = positions[input_size // 2: -(input_size // 2)]
+                positions_diff = positions[input_size_positional // 2: -(input_size_positional // 2)]
                 positions_diff_start = torch.tensor([(positions_diff[1] - positions_diff[0]) / 2 - 0]).to(device) # this assumes start morgans is 0
                 positions_diff_end = torch.tensor([len_chrom_morgan - (positions_diff[-1] + positions_diff[-2]) / 2]).to(device)
                 positions_diff = (positions_diff[2:] - positions_diff[:-2]) / 2
                 positions_diff = torch.cat((positions_diff_start, positions_diff, positions_diff_end))
                 positions_diff = positions_diff.unsqueeze(0).expand(num_individuals, -1)
 
-                ####
                 proportion_0 = positions_diff[predictions_argmax == 0].sum().item() / (len_chrom_morgan * num_individuals)
                 proportion_1 = positions_diff[predictions_argmax == 1].sum().item() / (len_chrom_morgan * num_individuals) 
                 proportion_2 = positions_diff[predictions_argmax == 2].sum().item() / (len_chrom_morgan * num_individuals)
 
+                # admixture_proportion_prediction0 = sqrt(proportion_0)
+                # admixture_proportion_prediction2 = 1 - sqrt(proportion_2)
+                
+                # if proportion_1 > 0.5:
+                #     admixture_proportion_prediction1 = 0.5
+                # elif admixture_proportion_prediction0 + admixture_proportion_prediction2 > 1:
+                #     admixture_proportion_prediction1 = (1 + sqrt(1 - 2*proportion_1)) / 2
+                # else:
+                #     admixture_proportion_prediction1 = (1 - sqrt(1 - 2*proportion_1)) / 2
+
+                # admixture_proportion = (admixture_proportion_prediction0 + admixture_proportion_prediction1 + admixture_proportion_prediction2) / 3
+
                 admixture_proportion = proportion_0 + proportion_1 * 0.5 + proportion_2 * 0
-                ####
-
-                #admixture_proportion = 1 - (predictions_argmax.sum().item() / (2 * len(chrom_morgan) * num_indiviudals))
-
 
                 print(admixture_proportion)
 
@@ -554,7 +563,7 @@ class KNet4(nn.Module):
 
                 admixture_proportion = 0.5
 
-        return predictions[:, input_size // 2: -(input_size // 2)]
+        return predictions[:, input_size_positional // 2: -(input_size_positional // 2)]
     
     @torch.no_grad()
     def predict_cluster4(self, SOI, positions_bp, recombination_map, batch_size=batch_size, num_generations=None, admixture_proportion=None, population_size=None):
@@ -581,8 +590,8 @@ class KNet4(nn.Module):
 
         num_individuals, len_seq = SOI.shape
 
-        padding = torch.full((num_individuals, input_size // 2), -1).to(device)
-        SOI = torch.cat((padding, SOI, padding), dim=1) # (num_individuals, len_seq + input_size - 1)
+        padding = torch.full((num_individuals, input_size_positional // 2), -1).to(device)
+        SOI = torch.cat((padding, SOI, padding), dim=1) # (num_individuals, len_seq + input_size_positional - 1)
         
         # fill with 0.25, 0.5, 0.25 # fill with ancestry proporotion
         predictions = torch.full((num_individuals, len_seq, num_classes), 1/num_classes).to(device) # (num_individuals, len_seq, num_classes)
@@ -604,15 +613,15 @@ class KNet4(nn.Module):
         predictions[0, :, 0] = 0.5 * (1 - admixture_proportion) * transition_aa_haploid + 0.5 * admixture_proportion * transition_cc_haploid
         predictions[0, :, 2] = 0.5 - predictions[0, :, 0]
 
-        padding = torch.full((num_individuals, input_size // 2, num_classes), 0).to(device)
-        predictions = torch.cat((padding, predictions, padding), dim=1) # (num_individuals, len_seq + input_size - 1, num_classes)
+        padding = torch.full((num_individuals, input_size_positional // 2, num_classes), 0).to(device)
+        predictions = torch.cat((padding, predictions, padding), dim=1) # (num_individuals, len_seq + input_size_positional - 1, num_classes)
 
-        padding = torch.full((input_size // 2,), float("inf")).to(device)
+        padding = torch.full((input_size_positional // 2,), float("inf")).to(device)
         positions = torch.cat((padding, positions_morgans, padding), dim=0)
 
         mask = (1 - torch.eye(num_individuals)).bool() # is there some way we can make labels a pointer to predictions
-        refs = SOI.unsqueeze(0).expand(num_individuals,-1,-1)[mask].reshape(num_individuals, num_individuals -1 , len_seq + input_size - 1)
-        labels = predictions.unsqueeze(0).expand(num_individuals,-1,-1,-1)[mask].reshape(num_individuals, num_individuals - 1, len_seq + input_size - 1, num_classes)
+        refs = SOI.unsqueeze(0).expand(num_individuals,-1,-1)[mask].reshape(num_individuals, num_individuals -1 , len_seq + input_size_positional - 1)
+        labels = predictions.unsqueeze(0).expand(num_individuals,-1,-1,-1)[mask].reshape(num_individuals, num_individuals - 1, len_seq + input_size_positional - 1, num_classes)
 
         print("shapes")
         print(SOI.shape)
@@ -645,7 +654,7 @@ class KNet4(nn.Module):
             has_predicted[ind1, ind2] = 1
 
             ind1 = ind1.unsqueeze(-1)
-            ind2 = ind2.unsqueeze(-1) + torch.arange(input_size).long()
+            ind2 = ind2.unsqueeze(-1) + torch.arange(input_size_positional).long()
             SOI_batch = SOI[ind1, ind2]
             refs_batch = refs[ind1, :, ind2].transpose(1,2)
             labels_batch = labels[ind1, :, ind2].transpose(1,2)
@@ -658,7 +667,7 @@ class KNet4(nn.Module):
 
             # conider multiplying exp distribution by alpha?
             # len_exp_distribution = 49 ## this should be chosen based on num generations and threshold accuracy
-            # positions_batch = (positions_batch[:, input_size // 2 - len_exp_distribution // 2: input_size // 2 + len_exp_distribution // 2 + 1] - positions_batch[:, input_size // 2].unsqueeze(-1)).abs()
+            # positions_batch = (positions_batch[:, input_size_positional // 2 - len_exp_distribution // 2: input_size_positional // 2 + len_exp_distribution // 2 + 1] - positions_batch[:, input_size_positional // 2].unsqueeze(-1)).abs()
             # The below line is not exactly right.  Each predicted class could transition to another class with different probabilities
             # exp_distribution = torch.exp(-2 * num_generations * (positions_batch)) # batch, len_exp_distribution
 
@@ -672,8 +681,8 @@ class KNet4(nn.Module):
             ###
             
             # add back in threshold value for longer sequences
-            positions_diff = (positions - positions_batch[:, input_size // 2].unsqueeze(-1)).abs().to(device) # batch, len_seq + input_size
-            transition_aa_haploid = lam_c / lam + (lam_a/lam) * torch.exp(-lam * positions_diff) # batch, len_seq + input_size - 1
+            positions_diff = (positions - positions_batch[:, input_size_positional // 2].unsqueeze(-1)).abs().to(device) # batch, len_seq + input_size_positional
+            transition_aa_haploid = lam_c / lam + (lam_a/lam) * torch.exp(-lam * positions_diff) # batch, len_seq + input_size_positional - 1
             transition_cc_haploid = lam_a / lam + (lam_c/lam) * torch.exp(-lam * positions_diff)
             transition_ac_haploid = 1 - transition_aa_haploid
             transition_ca_haploid = 1 - transition_cc_haploid
@@ -688,7 +697,7 @@ class KNet4(nn.Module):
             transitions_cb_diploid = transition_cc_haploid * transition_ca_haploid * 2
             transitions_cc_diploid = transition_cc_haploid ** 2
 
-            transitions = torch.zeros((batch_size, len_seq + input_size - 1, num_classes, num_classes)).to(device)
+            transitions = torch.zeros((batch_size, len_seq + input_size_positional - 1, num_classes, num_classes)).to(device)
             transitions[:, :, 0, 0] = transitions_aa_diploid * p_0a + transitions_cc_diploid * (1 - p_0a)
             transitions[:, :, 0, 1] = transitions_ab_diploid * p_0a + transitions_cb_diploid * (1 - p_0a)
             transitions[:, :, 0, 2] = transitions_ac_diploid * p_0a + transitions_ca_diploid * (1 - p_0a)
@@ -710,8 +719,8 @@ class KNet4(nn.Module):
 
             out_smoothed = (out.unsqueeze(1).unsqueeze(1) @ transitions).squeeze(-2) #@ transition_ancestry_probs
             predictions[ind3] = predictions[ind3] * (1 - out_smoothed) + out_smoothed
-            predictions[:, :input_size // 2] = 0
-            predictions[:, -(input_size // 2):] = 0
+            predictions[:, :input_size_positional // 2] = 0
+            predictions[:, -(input_size_positional // 2):] = 0
             # print(out.shape)
             # print(transitions.shape)
             # print(out_smoothed.shape)
@@ -733,14 +742,14 @@ class KNet4(nn.Module):
             # print(transitions[2,ind4[2]+250 + 250,:])
             #######
 
-            labels = predictions.unsqueeze(0).expand(num_individuals,-1,-1,-1)[mask].reshape(num_individuals, num_individuals - 1, len_seq + input_size - 1, num_classes)
+            labels = predictions.unsqueeze(0).expand(num_individuals,-1,-1,-1)[mask].reshape(num_individuals, num_individuals - 1, len_seq + input_size_positional - 1, num_classes)
 
             #####
             strict_predictions[ind3, ind4] = out
 
             # if infer_num_generations and i % (batch_size * 100) == 0 and i > 0:
 
-            #     num_tracts = (predictions[:, input_size // 2: -(input_size // 2) - 1].argmax(dim=-1) != predictions[:, input_size // 2 + 1: -(input_size // 2)].argmax(dim=-1)).sum().item() + num_individuals
+            #     num_tracts = (predictions[:, input_size_positional // 2: -(input_size_positional // 2) - 1].argmax(dim=-1) != predictions[:, input_size_positional // 2 + 1: -(input_size_positional // 2)].argmax(dim=-1)).sum().item() + num_individuals
             #     print(num_tracts)
             #     avg_len_transition = num_individuals * (5.8413e-02 - 5.1200e-06) / num_tracts
             #     print(avg_len_transition)
@@ -749,7 +758,7 @@ class KNet4(nn.Module):
             #     print(num_generations)
             #     print()
 
-        return predictions[:, input_size // 2: -(input_size // 2)]
+        return predictions[:, input_size_positional // 2: -(input_size_positional // 2)]
 
 
     @torch.no_grad()
@@ -763,9 +772,9 @@ class KNet4(nn.Module):
 
         full_input_size = refs.shape[1]
 
-        padding = torch.ones((input_size // 2,)) * -1 
+        padding = torch.ones((input_size_positional // 2,)) * -1 
         SOI = torch.cat((padding, SOI, padding), dim=0)
-        padding = torch.ones((n_ind_max, input_size // 2)) * -1
+        padding = torch.ones((n_ind_max, input_size_positional // 2)) * -1
         refs = torch.cat((padding, refs, padding), dim=-1)
         labels = torch.cat((padding, labels, padding), dim=-1)
 
@@ -773,39 +782,58 @@ class KNet4(nn.Module):
         for istart in range(0, full_input_size, max_batch_size):
             iend = min(istart + max_batch_size, full_input_size) 
 
-            refs_batch = refs[:,istart:input_size + iend - 1].to(device).unfold(-1, input_size, 1).transpose(0, 1)
-            labels_batch = labels[:,istart:input_size + iend - 1].to(device).unfold(-1, input_size, 1).transpose(0, 1)
-            SOI_batch = SOI[istart:input_size + iend - 1].to(device).unfold(0, input_size, 1)
+            refs_batch = refs[:,istart:input_size_positional + iend - 1].to(device).unfold(-1, input_size_positional, 1).transpose(0, 1)
+            labels_batch = labels[:,istart:input_size_positional + iend - 1].to(device).unfold(-1, input_size_positional, 1).transpose(0, 1)
+            SOI_batch = SOI[istart:input_size_positional + iend - 1].to(device).unfold(0, input_size_positional, 1)
 
             out[istart:iend] = self(SOI_batch, refs_batch, labels_batch)
 
         return out
 
-
     def forward(self, SOI, refs, labels, positions, params):
-
-        # print(SOI)
-        # print(refs)
-        # print(labels)
-        # print(positions)
-        # print(params)
 
         # print(SOI.shape, refs.shape, labels.shape)
 
-        # SOI             # batch, input_size
-        # positions       # batch, input_size
-        # refs            # batch, n_ind_max, input_size
-        # labels          # batch, n_ind_max, input_size, num_classses
+        # SOI             # batch, input_size_positional
+        # positions       # batch, input_size_positional
+        # refs            # batch, n_ind_max, input_size_positional
+        # labels          # batch, n_ind_max, input_size_positional, num_classses
 
-        # torch.set_printoptions(threshold=1000)
-        # print('\n\n\n')
-        # print(SOI[0, ::2])
-        # print(positions[0, ::2])
-        # print(refs[0,0,::2])
-        # print(labels[0, 0, ::2].sum(dim=-1))
+        input_index, fit_index = fit_positions(positions, params)
 
-        SOI = SOI.long().abs().unsqueeze(1).unsqueeze(1) # batch, 1, 1, input_size
+        SOI_fitted = torch.full((SOI.shape[0], input_size_positional + 1), -1).to(device)
+        SOI_gathered = torch.gather(SOI, 1, input_index)
+        SOI_fitted.scatter_(1, fit_index, SOI_gathered) # push to device earlier
+        SOI_fitted = SOI_fitted[:, :-1]
 
+        positions_fitted = torch.full((positions.shape[0], input_size_positional + 1), 0).to(device).float()
+        positions_gathered = torch.gather(positions, 1, input_index)
+        positions_fitted.scatter_(1, fit_index, positions_gathered)
+        positions_fitted = positions_fitted[:, :-1]
+
+        input_index = input_index.unsqueeze(1).expand(-1, n_ind_max, -1)
+        fit_index = fit_index.unsqueeze(1).expand(-1, n_ind_max, -1)
+
+        refs_fitted = torch.full((refs.shape[0], n_ind_max, input_size_positional + 1), -1).to(device)
+        refs_gathered = torch.gather(refs, 2, input_index)
+        refs_fitted.scatter_(2, fit_index, refs_gathered)
+        refs_fitted = refs_fitted[..., :-1]
+
+        input_index = input_index.unsqueeze(-1).expand(-1, -1, -1, num_classes)
+        fit_index = fit_index.unsqueeze(-1).expand(-1, -1, -1, num_classes)
+
+        labels_fitted = torch.full((labels.shape[0], n_ind_max, input_size_positional + 1, num_classes), 0).to(device)
+        labels_gathered = torch.gather(labels, 2, input_index)
+        labels_fitted.scatter_(2, fit_index, labels_gathered)
+        labels_fitted = labels_fitted[:, :, :-1]
+
+        SOI = SOI_fitted
+        positions = positions_fitted
+        refs = refs_fitted
+        labels = labels_fitted
+
+
+        SOI = SOI.long().abs().unsqueeze(1).unsqueeze(1) # batch, 1, 1, input_size_positional
 
         idx = torch.randperm(num_classes * n_ind_pan_model)
         refs = refs.long()[:, idx]
@@ -813,11 +841,11 @@ class KNet4(nn.Module):
 
         # OHE distance with negative value encoding to all 0s
         mask1 = (refs < 0)
-        refs = torch.abs(refs).unsqueeze(1) # batch, 1, n_ind_max, input_size
+        refs = torch.abs(refs).unsqueeze(1) # batch, 1, n_ind_max, input_size_positional
         
         mask2 = (labels.sum(dim=-1) == 0)
 
-        labels = torch.abs(labels).unsqueeze(1)        # batch, 1, n_ind_max, input_size
+        labels = torch.abs(labels).unsqueeze(1)        # batch, 1, n_ind_max, input_size_positional
         assert torch.equal(mask1, mask2)
         # print(mask1.sum().item()/mask1.numel())
 
@@ -829,14 +857,14 @@ class KNet4(nn.Module):
         SOI = F.one_hot(SOI, num_classes=num_classes).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).expand(-1, -1, -1, -1, -1, 3, 3, 3)
 
         ref_sim = labels * class_location * refs * SOI
-        ref_sim = ref_sim.reshape(*ref_sim.shape[:4], -1).float() #batch, num_classes, n_ind_max, input_size, num_classes ** 3
+        ref_sim = ref_sim.reshape(*ref_sim.shape[:4], -1).float() #batch, num_classes, n_ind_max, input_size_positional, num_classes ** 3
 
-        ref_sim = ref_sim @ Transition.to(device) #batch, num_classes, n_ind_max, input_size, n_embd
+        ref_sim = ref_sim @ Transition.to(device) #batch, num_classes, n_ind_max, input_size_positional, n_embd
         
         ####
         # ref_sim_avg = ref_sim.mean(dim=-1, keepdim=True)
         # below line assumes constant recombination rate.  positions should be in morgans not bp
-        positions = (positions - positions[:,input_size // 2].unsqueeze(-1)).abs()
+        positions = (positions - positions[:,input_size_positional // 2].unsqueeze(-1)).abs()
         admix_time = params[:,1].unsqueeze(-1)
         # pos_probs = (1 - positions) ** (2 * admix_time)
         # print(pos_probs.shape)
@@ -849,7 +877,7 @@ class KNet4(nn.Module):
         # print()
         pos_probs = pos_probs.unsqueeze(1).unsqueeze(1).unsqueeze(-1).expand(-1, num_classes, n_ind_max, -1, -1)
         positions = positions.unsqueeze(1).unsqueeze(1).unsqueeze(-1).expand(-1, num_classes, n_ind_max, -1, -1)
-        ref_sim = torch.cat((ref_sim, positions, pos_probs), dim=-1) #batch, num_classes, n_ind_max, input_size, n_embd_model
+        ref_sim = torch.cat((ref_sim, positions, pos_probs), dim=-1) #batch, num_classes, n_ind_max, input_size_positional, n_embd_model
         ####
 
         # Add noise
@@ -863,15 +891,14 @@ class KNet4(nn.Module):
         # include position encoding here?
         # include frequency of each value here?
 
-        # dist_avg = ref_sim.mean(dim=1, keepdim=True) # batch, 1, input_size, 4
-        # ref_sim = torch.cat((ref_sim, dist_avg), dim=1) # batch, num_classes * n_ind_pan_model + 1, input_size, 4
+        # dist_avg = ref_sim.mean(dim=1, keepdim=True) # batch, 1, input_size_positional, 4
+        # ref_sim = torch.cat((ref_sim, dist_avg), dim=1) # batch, num_classes * n_ind_pan_model + 1, input_size_positional, 4
 
         ref_sim = self.linear0(ref_sim)
-        # ref_sim = self.relu(ref_sim)
 
         # final classification layers
         # ref_sim = self.block(ref_sim) ###
-        ref_sim = ref_sim.reshape(*ref_sim.shape[:3], -1) # batch, num_classes, n_ind_max, input_size * hidden0
+        ref_sim = ref_sim.reshape(*ref_sim.shape[:3], -1) # batch, num_classes, n_ind_max, input_size_positional * hidden0
         ref_sim = self.linear1(ref_sim)
         ref_sim = self.relu(ref_sim)
         ref_sim = self.linear2(ref_sim)
@@ -891,12 +918,57 @@ class KNet4(nn.Module):
         return ref_sim
     
 
+def fit_positions(positions, params):
+
+    ## can be calculated once outside of function?
+    threshold_prob = 0.01
+    admix_time = params[:,1]
+    N = 1000 
+    lam = 2 * N * (1 - torch.exp(-admix_time / (2 * N)))
+    threshold_pos = -log(threshold_prob) / lam
+    ##
+
+    positions_fitted = torch.linspace(-1, 1, steps=input_size_positional).to(device)
+    positions_fitted = threshold_pos.unsqueeze(-1) * positions_fitted # batch, input_size_positional
+
+    positions_diff = (positions - positions[:, input_size // 2].unsqueeze(-1)) #batch, input_size
+
+    cost_matrix = (positions_diff.unsqueeze(-1) - positions_fitted.unsqueeze(1)).abs() # batch, input_size, input_size_positional
+    
+    padding = torch.ones((positions_diff.shape[0], positions_diff.shape[1], positions_diff.shape[1])).to(device) * (threshold_pos / (input_size_positional // 2)).unsqueeze(-1).unsqueeze(-1)
+
+    cost_matrix = torch.cat((cost_matrix, padding), dim=-1).cpu() # batch, input_size, input_size_positional + input_size
+
+    input_index = []
+    fit_index = []
+    for i in range(cost_matrix.shape[0]):
+        ind1, ind2 = linear_sum_assignment(cost_matrix[i])
+        input_index.append(ind1)
+        fit_index.append(ind2)
+
+    input_index = torch.from_numpy(np.array(input_index)).to(device)
+    fit_index = torch.from_numpy(np.array(fit_index)).to(device)
+    mask = (fit_index >= input_size_positional)
+
+    # input_index[mask] = input_size_positional
+    fit_index[mask] = input_size_positional
+
+    # fit_index = fit_index[0].tolist()
+    # for i in range(input_size_positional):
+    #     print(positions_fitted[0, i].item(), end="\t")
+    #     print(positions_diff[0, fit_index.index(i)].item() if i in fit_index else "x")
+
+    # exit()
+
+    return input_index, fit_index
+
+
 class TestNet(nn.Module):
     
     def __init__(self):
         super().__init__()
 
-        self.linear = nn.Linear(input_size, 100)
+        self.linear = nn.Linear(input_size_positional, 100)
         self.linear2 = nn.Linear(100, 3)
 
         self.relu = nn.ReLU()

@@ -38,25 +38,12 @@ refs = torch.zeros((num_files, num_classes, n_ind_pan_model, input_size))
 refs[:,0] = refA[:, :2 * n_ind_pan // 6 * 2:2] + refA[:, 1:2 * n_ind_pan // 6 * 2:2]
 refs[:,2] = refB[:, :2 * n_ind_pan // 6 * 2:2] + refB[:, 1:2 * n_ind_pan // 6 * 2:2]
 refs[:,1] = refA[:, -(n_ind_pan // 6 * 2):] + refB[:, -(n_ind_pan // 6 * 2):]
-positions = torch.tensor(positions) #num_files, input_size
+positions = torch.tensor(positions) / num_bp #num_files, input_size
 
-print()
-for i in range(3):
-    print((refs == i).sum().item() / refs.numel())
-print()
-for i in range(3):
-    print((y == i).sum().item() / y.numel())
-print()
-for i in range(3):
-    print((X == i).sum().item() / X.numel())
-print()
-exit()
-
-print(X.shape)
-print(y.shape)
-print(refs.shape)
-print(positions.shape)
-exit()
+params_list = [params[i].clone().tolist() for i in range(len(positions))]
+positions_list = [positions[i].clone().tolist() for i in range(len(positions))]
+X_list = [X[i].clone().tolist() for i in range(len(positions))]
+y_list = [y[i].clone().tolist() for i in range(len(positions))]
 
 GetMemory()
 
@@ -66,6 +53,7 @@ idx = torch.randperm(X.shape[0])
 X = X[idx]
 y = y[idx]
 refs = refs[idx]
+positions = positions[idx]
 params = params[idx]
 
 # Split data
@@ -74,6 +62,7 @@ X_train, X_test = X[:ind], X[ind:]
 y_train, y_test = y[:ind], y[ind:]
 refs_train, refs_test = refs[:ind], refs[ind:]
 params_train, params_test = params[:ind], params[ind:]
+positions_train, positions_test = positions[:ind], positions[ind:]
 
 GetMemory()
 GetTime()
@@ -106,24 +95,26 @@ optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
 # Define functions for getting random batch and calculating loss
 def get_batch(split, num_samples):
-    X, y, refs, params = (X_train, y_train, refs_train, params_train) if split == "train" else (X_test, y_test, refs_test, params_test)
+    X, y, refs, positions, params = (X_train, y_train, refs_train, positions_train, params_train) if split == "train" else (X_test, y_test, refs_test, positions_test, params_test)
     idx = torch.randperm(X.shape[0])
     idx = idx[:min(num_samples,len(idx))]
     X = X[idx]
     y = y[idx]
     refs = refs[idx]
+    positions = positions[idx]
     params = params[idx]
-    return X.to(device), y.to(device), refs, params
+    return X.to(device), y.to(device), refs, positions.to(device), params
 
 @torch.no_grad()
 def estimate_loss(num_samples):
     model.eval()
     for split in ["train", "test"]:
         
-        X, y, refs, params = get_batch(split, num_samples)
+        X, y, refs, positions, params = get_batch(split, num_samples)
         y_pred = torch.zeros((num_samples, num_classes))
         y_true = torch.zeros((num_samples,)).long().to(device)
         params_tested = torch.zeros((num_samples, 6))
+
 
         for iter in range(ceil(num_samples / X.shape[0])): #it's possible to make this slightly more efficient
             for istart in range(iter * X.shape[0], min((iter + 1) * X.shape[0], num_samples), batch_size):
@@ -133,12 +124,19 @@ def estimate_loss(num_samples):
                 X_batch = X[istart % X.shape[0]:(iend - 1) % X.shape[0] + 1].to(device)
                 y_batch = y[istart % X.shape[0]:(iend - 1) % X.shape[0] + 1]
                 refs_batch = refs[istart % X.shape[0]:(iend - 1) % X.shape[0] + 1].clone().to(device)
-                params_tested[istart:iend] = params[istart % X.shape[0]:(iend - 1) % X.shape[0] + 1]
+                positions_batch = positions[istart % X.shape[0]:(iend - 1) % X.shape[0] + 1]
+                params_batch = params[istart % X.shape[0]:(iend - 1) % X.shape[0] + 1].to(device)
+                params_tested[istart:iend] = params_batch
+
+                # print(params_list.index(params_tested[0].clone().cpu().tolist()))
+                # print(positions_list.index(positions_batch[0].clone().cpu().tolist()))
+                # print(X_list.index(X_batch[0].clone().cpu().tolist()))
+                # print(y_list.index(y_batch[0].clone().cpu().tolist()))
 
                 X_batch, y_batch, refs_batch, labels_batch = preprocess_batch(X_batch, y_batch, refs_batch)
                 labels_batch[labels_batch == -1] = 0
 
-                y_pred[istart:iend] = model(X_batch, refs_batch, labels_batch)
+                y_pred[istart:iend] = model(X_batch, refs_batch, labels_batch, positions_batch, params_batch)
                 y_true[istart:iend] = y_batch
 
 
@@ -206,6 +204,7 @@ for epoch in range(num_epochs):
     X_train = X_train[idx]
     y_train = y_train[idx]
     refs_train = refs_train[idx]
+    positions_train = positions_train[idx]
     params_train = params_train[idx]
 
     for istart in range(0, X_train.shape[0], batch_size):
@@ -215,6 +214,14 @@ for epoch in range(num_epochs):
         y_batch = y_train[istart:iend]
         X_batch = X_train[istart:iend].to(device)
         refs_batch = refs_train[istart:iend].clone().to(device)
+        positions_batch = positions_train[istart:iend].to(device)
+        params_batch = params_train[istart:iend].to(device)
+
+        # print(positions_list.index(positions_batch[0].clone().cpu().tolist()))
+        # print(X_list.index(X_batch[0].clone().cpu().tolist()))
+        # print(y_list.index(y_batch[0].clone().cpu().tolist()))
+        # print(params_list.index(params_batch[0].clone().cpu().tolist()))
+
 
         X_batch, y_batch, refs_batch, labels_batch = preprocess_batch(X_batch, y_batch, refs_batch)
         labels_batch[labels_batch == -1] = 0
@@ -224,10 +231,10 @@ for epoch in range(num_epochs):
         with training_context():
 
             try:
-                y_pred = model(X_batch, refs_batch, labels_batch)
+                y_pred = model(X_batch, refs_batch, labels_batch, positions_batch, params_batch)
             except torch.cuda.OutOfMemoryError:
                 torch.cuda.empty_cache()
-                y_pred = model(X_batch, refs_batch, labels_batch)
+                y_pred = model(X_batch, refs_batch, labels_batch, positions_batch, params_batch)
 
             loss = criterion(y_pred, y_batch.to(device))
 
@@ -247,6 +254,9 @@ for epoch in range(num_epochs):
     if (epoch + 1) % eval_interval == 0:
 
         loss = estimate_loss(num_estimate)
+
+        if epoch == 799:
+            exit()
 
         if save_file.lower() != "none.pth" and loss < best_loss:
             best_loss = loss

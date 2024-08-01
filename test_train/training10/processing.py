@@ -27,25 +27,25 @@ def GetTime():
 
 def convert_panel(panel_file):
 
-    with open(panel_file, "r") as f:
-        lines = f.readlines()[:input_size_processing*input_size_step:input_size_step]
+    end_index = None if input_size_processing == "all" else input_size_processing*input_size_step
 
-    assert len(lines) == input_size_processing
+    with open(panel_file, "r") as f:
+        lines = f.readlines()[:end_index:input_size_step]
 
     lines = [line.split() for line in lines]
 
     positions = [int(line[1]) for line in lines]
 
-    admixed_individual = [[int(line[i]) for line in lines] for i in range(8, 8 + n_ind_adm * 2, 2)]
+    admixed_individual = [[int(line[i]) for line in lines] for i in range(8 + n_ind_adm_start * 2, 8 + n_ind_adm_end * 2, 2)]
     
     return admixed_individual, positions
 
 def convert_panel_template(panel_template_file):
 
-    with open(panel_template_file, "r") as f:
-        lines = f.readlines()[1:input_size_processing*input_size_step+1:input_size_step]
+    end_index = None if input_size_processing == "all" else input_size_processing*input_size_step+1
 
-    assert len(lines) == input_size_processing
+    with open(panel_template_file, "r") as f:
+        lines = f.readlines()[1:end_index:input_size_step]
 
     lines = [line.split() for line in lines]
 
@@ -62,10 +62,10 @@ def convert_panel_template(panel_template_file):
 def convert_split(split_file, positions):
 
     with open(split_file, "r") as f:
-        splits = f.readlines()[:-1]
+        splits = f.readlines()[:-1][2*n_ind_adm_start:2*n_ind_adm_end]
 
     splits = [[-1.0] + [float(l) for l in line.split("\t")] + [1.0] if not line.isspace() else [-1.0, 1.0] for line in splits]
-    assert len(splits) == 800
+    assert len(splits) == 2 * (n_ind_adm_end - n_ind_adm_start)
 
     y = []
     for split in splits:

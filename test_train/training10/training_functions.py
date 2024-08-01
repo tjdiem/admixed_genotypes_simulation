@@ -1,19 +1,34 @@
 from globals import *
 
 
-def preprocess_batch(X_batch, y_batch, refs_batch):
+def preprocess_batch(X_batch, y_batch, refs_batch, prob_args=None):
 
     random_items = torch.rand((10,)).tolist()
 
     # X_batch, y_batch (batch, n_ind_adm, input_size)
     # refs_batch   (batch, num_classes, n_ind_pan, input_size)
 
+    if prob_args is None:
+        prob0 = 0.5
+        prob1 = 1.0
+        prob2a = 0.6
+        prob2b = 0.2
+        prob2c = 0.2
+
+    else:
+        prob_args_dict, split = prob_args
+        prob0 = prob_args_dict["prob0"][split]
+        prob1 = prob_args_dict["prob1"][split]
+        prob2a = prob_args_dict["prob2a"][split]
+        prob2b = prob_args_dict["prob2b"][split]
+        prob2c = prob_args_dict["prob2c"][split]
+
     random_tensor = torch.randint(0, n_ind_adm, (X_batch.shape[0],))
 
     X_batch_out = X_batch[torch.arange(X_batch.shape[0]).long(), random_tensor]
-    y_batch_out = y_batch[torch.arange(X_batch.shape[0]).long(), random_tensor, input_size_processing // 2]
+    y_batch_out = y_batch[torch.arange(X_batch.shape[0]).long(), random_tensor, input_size // 2]
 
-    if random_items[0] < 0.5:
+    if random_items[0] < prob0:
 
         # create refs_batch (out) and labels_batch from refs_batch
         labels_batch = torch.arange(num_classes).to(device).unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
@@ -22,8 +37,9 @@ def preprocess_batch(X_batch, y_batch, refs_batch):
         refs_batch = refs_batch.reshape(refs_batch.shape[0], n_ind_max, input_size)
         labels_batch = labels_batch.reshape(labels_batch.shape[0], n_ind_max, input_size)
         labels_batch = F.one_hot(labels_batch.long(), num_classes=num_classes)
+        labels_batch[refs_batch == -1] = -1
 
-        if random_items[1] < 1.0:
+        if random_items[1] < prob1:
             # block out arbitrary number of reference panels 
             rand_arange = torch.stack([torch.randperm(n_ind_max) for _ in range(refs_batch.shape[0])])
             rand_int = torch.randint(0, n_ind_max, (refs_batch.shape[0], 1))
@@ -38,7 +54,7 @@ def preprocess_batch(X_batch, y_batch, refs_batch):
             refs_batch[idx_blocked] = -1
             labels_batch[idx_blocked] = -1
 
-        if random_items[2] < 0.6:
+        if random_items[2] < prob2a:
             # block out arbitrary SNPs for each reference panel
             rand_float = torch.rand(refs_batch.shape[0], n_ind_max)
             rand_int = torch.randint(1, input_size, (refs_batch.shape[0], n_ind_max, 1))
@@ -51,15 +67,20 @@ def preprocess_batch(X_batch, y_batch, refs_batch):
             refs_batch[idx_blocked] = -1
             labels_batch[idx_blocked] = -1
 
-        elif random_items[2] < 0.8:
+        elif random_items[2] < prob2a + prob2b:
             # block out first half (rounding down) of each reference panel
             refs_batch[:,:,:input_size // 2] = -1
             labels_batch[:,:,:input_size // 2] = -1
 
-        else:
+        elif random_items[2] < prob2a + prob2b + prob2c:
             # block out second half (rounding up) of each reference panel
             refs_batch[:,:,input_size // 2 + 1:] = -1
             labels_batch[:,:,input_size // 2 + 1:] = -1
+
+        else:
+            # don't block any SNPs
+            pass
+
 
     else:
         # create refs_batch (out) and labels_batch from X_batch and y_batch
@@ -67,7 +88,8 @@ def preprocess_batch(X_batch, y_batch, refs_batch):
         rand_perms = [torch.randperm(n_ind_adm - 1)[:n_ind_max] for _ in range(X_batch.shape[0])]
         refs_batch = torch.stack([X_batch.clone().to(device)[i, arange != random_tensor[i]][rand_perms[i]] for i in range(X_batch.shape[0])])
         labels_batch = torch.stack([y_batch.clone().to(device)[i, arange != random_tensor[i]][rand_perms[i]] for i in range(X_batch.shape[0])])
-        labels_batch = F.one_hot(labels_batch.long(), num_classes=num_classes)
+        labels_batch = F.one_hot(labels_batch.abs().long(), num_classes=num_classes)
+        labels_batch[refs_batch == -1] = -1
 
         #block out arbitrary number of reference panels
         rand_arange = torch.stack([torch.randperm(n_ind_max) for _ in range(refs_batch.shape[0])])
@@ -100,10 +122,10 @@ def preprocess_batch(X_batch, y_batch, refs_batch):
     #     labels_batch[prob_indices[:-1]] /= labels_batch[prob_indices[:-1]].sum(dim=-1, keepdim=True)
     ######
 
-    return X_batch_out, y_batch_out, refs_batch, labels_batch
+    return X_batch_out, y_batch_out, refs_batch.long(), labels_batch
 
 @torch.no_grad()
-def get_y_batch(X_batch, y_batch, refs_batch, labels_batch, model, num_probs=None):
+def get_y_batch(X_batch, y_batch, refs_batch, labels_batch, reference_model, num_probs=None):
 
     assert batch_size == 1
 
@@ -111,7 +133,8 @@ def get_y_batch(X_batch, y_batch, refs_batch, labels_batch, model, num_probs=Non
     valid_prob_indices = (labels_batch == 0).nonzero()
 
     if num_probs is None:
-        num_probs = torch.randint(0, max_num_probs + 1, (1,)).item()
+        # num_probs = torch.randint(0, max_num_probs + 1, (1,)).item()
+        num_probs = 2
         num_probs = min(num_probs, valid_prob_indices.shape[0])
     else:
         if valid_prob_indices.shape[0] < num_probs:
@@ -164,10 +187,10 @@ def get_y_batch(X_batch, y_batch, refs_batch, labels_batch, model, num_probs=Non
     _,a,b = zip(*prob_indices_iterated)
     labels_total[:,a,b] = combinations
 
-    model_mode = model.training
-    model.eval()
-    out = model(X_batch.expand(len(combinations), -1), refs_batch.expand(len(combinations), -1, -1), labels_total)
-    model.train(model_mode)
+    model_mode = reference_model.training
+    reference_model.eval()
+    out = reference_model(X_batch.expand(len(combinations), -1), refs_batch.expand(len(combinations), -1, -1), labels_total)
+    reference_model.train(model_mode)
 
     out = (probabilities * F.softmax(out, dim=-1)).sum(dim=0)
 
