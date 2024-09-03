@@ -50,7 +50,7 @@ def predict_full_sequence(model, SOI, positions, refs, labels, batch_size=batch_
     positions_diff = (positions - positions_next.unsqueeze(-1)).abs() # batch, len_seq
 
 
-    num_iterations = 100
+    num_iterations = min(400, len_seq // batch_size)
     temperature = 1.0
     outputs = torch.zeros((len_seq, 3)).float().to(device)
     idx_sampled = torch.arange(batch_size * num_iterations).long() * len_seq // (batch_size * num_iterations)
@@ -167,7 +167,7 @@ def predict_full_sequence(model, SOI, positions, refs, labels, batch_size=batch_
 
 
         ##*******
-        if True:#iteration == num_iterations - 1:
+        if False:#iteration == num_iterations - 1:
 
             prob_weights_left = torch.zeros((outputs_predicted.shape[0],)).to(device).float()
             prob_weights_left[0] = 1
@@ -232,7 +232,7 @@ def predict_full_sequence(model, SOI, positions, refs, labels, batch_size=batch_
         #     plt.show()
 
         predictions_last = (transitions_left * left_pred1.unsqueeze(1)).sum(dim=-1) * (transitions_right * right_pred1.unsqueeze(1)).sum(dim=-1) * middle_pred1
-        predictions_last = predictions_last ** (1 / total_weight.unsqueeze(-1))
+        # predictions_last = predictions_last ** (1 / total_weight.unsqueeze(-1))
         predictions_last /= predictions_last.sum(dim=-1, keepdim=True)
         predictions_last_strict = predictions_last.argmax(dim=-1)
 
@@ -308,8 +308,12 @@ if __name__ == "__main__":
     print(f"Time: {time_spent:0.3f}")
 
     y_pred_strict = y_pred.argmax(dim=-1)
+    with open(f"model_pred/y_pred_{random_file}", "w") as f:
+        f.write(str(y_pred_strict.cpu().tolist()))
     acc = (y_pred_strict == y).sum().item()/ y.shape[0]
     print(f"Accuracy: {acc:0.6f}")
+
+    exit()
 
 
 

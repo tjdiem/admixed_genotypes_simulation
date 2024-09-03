@@ -67,6 +67,9 @@ def predict_cluster(model, SOI, positions_bp, recombination_map, len_chrom_bp=No
     predictions[1:, :, 2] = 0.25 #noninfered_tract2.unsqueeze(0).repeat(num_individuals - 1, 1)
     predictions[:, :, 1] = 0.5
 
+    # predictions = torch.rand_like(predictions)
+    # predictions /= predictions.sum(dim=-1, keepdim=True)
+
     # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     # 0.5 0.5 instead of 1 - ap, ap ??!!!
     # predictions[0, :, 0] = 0.5 * (1 - admixture_proportion) * transition_aa_haploid + 0.5 * admixture_proportion * transition_cc_haploid
@@ -97,8 +100,9 @@ def predict_cluster(model, SOI, positions_bp, recombination_map, len_chrom_bp=No
         
     when_predicted = torch.full((num_individuals, len_seq), 1.0)
     has_predicted = torch.zeros((num_individuals, len_seq))
+    # has_predicted[0, 0] = 1
 
-    for i in range(0, num_individuals * len_seq, batch_size):
+    for i in range(0, num_individuals * len_seq * 10, batch_size):
 
         # probabilities = (when_predicted / when_predicted.sum()).flatten()
         # ind = torch.multinomial(probabilities, batch_size, replacement=False)
@@ -106,10 +110,10 @@ def predict_cluster(model, SOI, positions_bp, recombination_map, len_chrom_bp=No
         # ind2 = ind % len_seq
 
         # probabilities = (when_predicted / when_predicted.sum())
-        if i == 0:
-            probabilities[0] = 0
 
         probabilities = 1 - predictions[:, input_size // 2 : - (input_size // 2)].max(dim=-1)[0].cpu()
+        if i == 0:
+            probabilities[0] = 0
         ind1 = torch.multinomial(probabilities.sum(dim=-1), batch_size, replacement=False)
         ind2 = torch.multinomial(probabilities[ind1], 1).squeeze(-1)
         
@@ -132,7 +136,7 @@ def predict_cluster(model, SOI, positions_bp, recombination_map, len_chrom_bp=No
 
         out = model(SOI_batch, refs_batch, labels_batch, positions_batch, params_batch)
         out = F.softmax(out, dim=-1).double() # batch, num_classes
-
+            
         ###########9999
         positions_diff = (positions - positions_batch[:, input_size // 2].unsqueeze(-1)).abs().to(device) # batch, len_seq + input_size
 
@@ -232,21 +236,25 @@ def predict_cluster(model, SOI, positions_bp, recombination_map, len_chrom_bp=No
 
     return predictions[:, input_size // 2: -(input_size // 2)]
                                              
-len_seq = 950
+len_seq = 1500
 
-random_file = 0 if human_data else 5 #torch.randint(0, num_files, (1,)).item()
+random_file = int(sys.argv[1])
+
+torch.manual_seed(409)
+torch.manual_seed(202)
+random.seed(202)
 
 X, positions = convert_panel(panel_dir + "panel_" + str(random_file))
-X = torch.tensor(X).to(device)[:49,:len_seq] # n_ind_adm, input_size
+X = torch.tensor(X).to(device)[:49, :len_seq] # n_ind_adm, input_size
 positions = torch.tensor(positions).to(device)[:len_seq]
 
 y = convert_split(split_dir + "split_" + str(random_file), positions)
 y = torch.tensor(y) # 2 * n_ind_adm, input_size
-y = (y[::2] + y[1::2])[:49,:len_seq] # unphase ancestry labels # same shape as X
+y = (y[::2] + y[1::2])[:49, :len_seq] # unphase ancestry labels # same shape as X
 
 model = KNet4()
 model = model.to(device)
-model.load_state_dict(torch.load("model_1_pos_time.pth", map_location=torch.device(device)))
+model.load_state_dict(torch.load("cluster_13.pth", map_location=torch.device(device)))
 model.eval()
 
 num_bp = 50_000_000
@@ -261,8 +269,9 @@ with open(parameters_dir + "parameter_" + str(random_file)) as f:
 t1 = time.time()
 y_pred = predict_cluster(model, X, positions, recombination_map=recombination_map, batch_size=16, num_generations=num_generations, admixture_proportion=None)
 print(time.time() - t1)
-
 y_pred = y_pred.argmax(dim=-1)
+with open(f"cluster_pred/y_pred_{random_file}", "w") as f:
+    f.write(str(y_pred.cpu().tolist()))
 y = y.to(device)
 for i in range(3):
     print((y_pred == i).sum().item())
@@ -270,4 +279,4 @@ for i in range(3):
     print()
 
 acc = max((y_pred == y).sum().item(), (2 - y_pred == y).sum().item()) / y.numel()
-print(acc)
+print(f"Accuracy: {acc:0.6f}")
